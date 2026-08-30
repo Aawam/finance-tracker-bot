@@ -48,32 +48,51 @@ def to_float(x):
     return float(x)
 
 
+def _month_bounds(ref_date: datetime, months_back: int):
+    """
+    Return (first_day, last_day) untuk bulan yang 'months_back' bulan sebelum ref_date.
+    Deterministik: pakai (year, month) arithmetic, bukan timedelta(days=30).
+    Contoh: ref_date=Aug 2026, months_back=0 → Aug 2026
+             ref_date=Aug 2026, months_back=5 → Mar 2026
+    """
+    total_months = (ref_date.year * 12 + ref_date.month - 1) - months_back
+    y = total_months // 12
+    m = total_months % 12 + 1
+    first = datetime(y, m, 1)
+    if m == 12:
+        last = datetime(y + 1, 1, 1) - timedelta(seconds=1)
+    else:
+        last = datetime(y, m + 1, 1) - timedelta(seconds=1)
+    return first, last
+
+
+def build_monthly(session, today: datetime, n_months: int = 6):
+    """Return list of dict untuk n_months terakhir (termasuk bulan ini)."""
+    result = []
+    for i in range(n_months - 1, -1, -1):
+        first, last = _month_bounds(today, i)
+        rep = report_income_statement(session, first, last)
+        result.append({
+            "label": first.strftime("%b %Y"),
+            "income": to_float(rep["income"]),
+            "expense": to_float(rep["expense"]),
+            "net": to_float(rep["net"]),
+        })
+    return result
+
+
 @app.route("/")
 def dashboard():
     session = get_session()
+    today = datetime.utcnow()
     try:
         r = report_income_statement(session)
         bs = report_balance_sheet(session)
         cf = report_cash_flow(session)
         cats = report_by_category(session)
 
-        # 6 bulan terakhir — ringkasan
-        monthly = []
-        today = datetime.utcnow()
-        for i in range(5, -1, -1):
-            t = today - timedelta(days=30*i)
-            first = t.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            if first.month == 12:
-                last = first.replace(year=first.year+1, month=1) - timedelta(seconds=1)
-            else:
-                last = first.replace(month=first.month+1) - timedelta(seconds=1)
-            rep = report_income_statement(session, first, last)
-            monthly.append({
-                "label": first.strftime("%b %Y"),
-                "income": to_float(rep["income"]),
-                "expense": to_float(rep["expense"]),
-                "net": to_float(rep["net"]),
-            })
+        # 6 bulan terakhir — ringkasan (deterministik via build_monthly)
+        monthly = build_monthly(session, today, n_months=6)
 
         # Budget status
         bstat = budget_status(session)
@@ -227,22 +246,8 @@ def api_monthly():
     """Return 12 bulan terakhir income/expense."""
     session = get_session()
     try:
-        result = []
         today = datetime.utcnow()
-        for i in range(11, -1, -1):
-            t = today - timedelta(days=30*i)
-            first = t.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            if first.month == 12:
-                last = first.replace(year=first.year+1, month=1) - timedelta(seconds=1)
-            else:
-                last = first.replace(month=first.month+1) - timedelta(seconds=1)
-            rep = report_income_statement(session, first, last)
-            result.append({
-                "label": first.strftime("%b %y"),
-                "income": to_float(rep["income"]),
-                "expense": to_float(rep["expense"]),
-                "net": to_float(rep["net"]),
-            })
+        result = build_monthly(session, today, n_months=12)
         return jsonify(result)
     finally:
         session.close()

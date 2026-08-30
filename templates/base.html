@@ -56,6 +56,8 @@ tr.total td { font-weight: 700; background: #fef3c7; border-top: 2px solid var(-
 .bar-fill.gray { background: var(--text-light); }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
 @media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+.chart-wrap { position: relative; height: 280px; width: 100%; }
+.chart-wrap canvas { display: block; max-width: 100%; }
 .badge-status { display: inline-block; padding: 2px 8px; border-radius: 12px;
   font-size: 0.75rem; font-weight: 600; }
 .badge-status.over { background: var(--loss); color: var(--danger); }
