@@ -24,9 +24,19 @@ Commands:
 import os
 import logging
 import re
+from pathlib import Path
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timedelta
 from functools import partial
+
+# Load .env file (kalau ada) — utamakan env vars system
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+except ImportError:
+    pass  # dotenv optional; kalau gak ada, pakai os.environ langsung
 
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton,
@@ -43,6 +53,12 @@ from accounting import (
     post_transaction, next_jv_number, account_balance, all_balances,
     report_income_statement, report_balance_sheet, report_cash_flow,
     report_by_category, period_summary, parse_amount,
+)
+from budget import (
+    seed_defaults as seed_budget_defaults,
+    detect_category, add_keyword, remove_keyword, list_keywords,
+    get_budget, set_budget, all_budgets, budget_status,
+    progress_bar, fmt_rp as fmt_rp_budget,
 )
 
 # ============= CONFIG =============
@@ -72,6 +88,11 @@ def seed_accounts():
         session.commit()
         log.info("Chart of accounts seeded.")
     session.close()
+    # Seed keywords + budgets
+    session = get_session()
+    seed_budget_defaults(session)
+    session.close()
+    log.info("Keywords & budgets seeded.")
 
 # ============= FORMAT HELPERS =============
 def fmt_rp(n) -> str:
@@ -202,42 +223,50 @@ async def cmd_income(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         session.close()
 
 async def cmd_expense(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """Quick command: /expense <kategori> <nominal> <keterangan>"""
-    if not ctx.args or len(ctx.args) < 3:
-        await update.message.reply_text(
-            "⚠️ Format: `/expense <kategori> <nominal> <keterangan>`\n"
-            "Contoh: `/expense gaji 18000000 Bayar gaji Agustus`\n\n"
-            "Kategori tersedia: " + ", ".join(CATEGORY_LIST),
-            parse_mode="Markdown",
-        )
-        return
-    cat = ctx.args[0].lower()
-    if cat not in EXPENSE_CATEGORIES:
-        await update.message.reply_text(
-            f"⚠️ Kategori `{cat}` tidak dikenal.\n\n"
-            f"Kategori: " + ", ".join(CATEGORY_LIST),
-            parse_mode="Markdown",
-        )
-        return
-    try:
-        amount = parse_amount(ctx.args[1])
-    except (InvalidOperation, ValueError):
-        await update.message.reply_text(f"⚠️ Nominal tidak valid: `{ctx.args[1]}`", parse_mode="Markdown")
-        return
-    description = " ".join(ctx.args[2:])
-    akun_list = EXPENSE_CATEGORIES[cat]
-    # Pakai akun beban pertama dari kategori sebagai default
-    acc = akun_list[0]
-
+    """Quick command: /expense <kategori> <nominal> <keterangan>
+    Atau /expense <nominal> <keterangan> — auto-detect kategori."""
     session = get_session()
     try:
+        if not ctx.args or len(ctx.args) < 2:
+            await update.message.reply_text(
+                "⚠️ Format:\n"
+                "`/expense <kategori> <nominal> <keterangan>`\n"
+                "`/expense <nominal> <keterangan>` (auto-detect)\n\n"
+                "Kategori: " + ", ".join(CATEGORY_LIST),
+                parse_mode="Markdown",
+            )
+            return
+
+        # Deteksi: kalau arg[0] adalah kategori valid -> explicit
+        if ctx.args[0].lower() in EXPENSE_CATEGORIES and len(ctx.args) >= 3:
+            cat = ctx.args[0].lower()
+            try:
+                amount = parse_amount(ctx.args[1])
+            except (InvalidOperation, ValueError):
+                await update.message.reply_text(f"⚠️ Nominal tidak valid: `{ctx.args[1]}`", parse_mode="Markdown")
+                return
+            description = " ".join(ctx.args[2:])
+        else:
+            # Auto-detect mode: /expense <nominal> <keterangan>
+            try:
+                amount = parse_amount(ctx.args[0])
+            except (InvalidOperation, ValueError):
+                await update.message.reply_text(f"⚠️ Nominal tidak valid: `{ctx.args[0]}`", parse_mode="Markdown")
+                return
+            description = " ".join(ctx.args[1:])
+            cat = detect_category(session, description)
+            if not cat:
+                cat = "operasional"  # fallback
+        akun_list = EXPENSE_CATEGORIES[cat]
+        acc = akun_list[0]
+
         jv = next_jv_number(session)
-        err = post_transaction(session, jv, description, [
+        _, err = post_transaction(session, jv, description, [
             {"account_code": acc, "debit": amount, "credit": 0},
             {"account_code": "1000", "debit": 0, "credit": amount},
         ], category=cat)
-        if err[1]:
-            await update.message.reply_text(f"❌ {err[1]}")
+        if err:
+            await update.message.reply_text(f"❌ {err}")
             return
         await update.message.reply_text(
             f"✅ *Pengeluaran dicatat!*\n"
@@ -459,6 +488,162 @@ async def cmd_categories(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         for cat in CATEGORY_LIST:
             text += f"• *{cat_label.get(cat, cat)}*: {fmt_rp(cat_totals[cat])}\n"
         await update.message.reply_text(text, parse_mode="Markdown")
+    finally:
+        session.close()
+
+# ===== SMART CATEGORIZATION + BUDGET COMMANDS =====
+
+async def cmd_keyword(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """
+    /keyword                                → list semua keywords
+    /keyword add <kategori> <kata>          → tambah keyword
+    /keyword remove <kategori> <kata>       → hapus keyword
+    /keyword test <deskripsi>               → test deteksi
+    """
+    args = ctx.args
+    session = get_session()
+    try:
+        if not args:
+            # List semua
+            kws = list_keywords(session)
+            if not kws:
+                await update.message.reply_text("Belum ada keyword.")
+                return
+            lines = ["🔑 *DAFTAR KEYWORD AUTO-CATEGORIZE*\n"]
+            for cat, kw_list in kws:
+                lines.append(f"*{cat}*: {', '.join(kw_list)}")
+            await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+            return
+
+        if args[0] == "add" and len(args) >= 3:
+            cat = args[1].lower()
+            if cat not in CATEGORY_LIST:
+                await update.message.reply_text(f"❌ Kategori `{cat}` tidak dikenal.")
+                return
+            kw = " ".join(args[2:])
+            ok = add_keyword(session, cat, kw)
+            if ok:
+                await update.message.reply_text(f"✅ Keyword `{kw}` ditambah ke kategori `{cat}`.")
+            else:
+                await update.message.reply_text(f"⚠️ Keyword `{kw}` sudah ada di kategori `{cat}`.")
+            return
+
+        if args[0] == "remove" and len(args) >= 3:
+            cat = args[1].lower()
+            kw = " ".join(args[2:])
+            ok = remove_keyword(session, cat, kw)
+            if ok:
+                await update.message.reply_text(f"✅ Keyword `{kw}` dihapus dari `{cat}`.")
+            else:
+                await update.message.reply_text(f"⚠️ Keyword `{kw}` tidak ditemukan di `{cat}`.")
+            return
+
+        if args[0] == "test" and len(args) >= 2:
+            desc = " ".join(args[1:])
+            cat = detect_category(session, desc)
+            if cat:
+                await update.message.reply_text(f"🧪 `{desc}`\n→ terdeteksi: *{cat}*", parse_mode="Markdown")
+            else:
+                await update.message.reply_text(f"🧪 `{desc}`\n→ tidak ada kategori yang match.")
+            return
+
+        await update.message.reply_text(
+            "⚠️ Format salah.\n"
+            "`/keyword` — list\n"
+            "`/keyword add <kategori> <kata>`\n"
+            "`/keyword remove <kategori> <kata>`\n"
+            "`/keyword test <deskripsi>`",
+            parse_mode="Markdown",
+        )
+    finally:
+        session.close()
+
+
+async def cmd_budget(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """
+    /budget               → tampilkan status budget vs aktual
+    /budget set <kat> <pct>   → set target % (mis. 0.30 = 30%)
+    """
+    args = ctx.args
+    session = get_session()
+    try:
+        if not args:
+            # Tampilkan status
+            status = budget_status(session)
+            rev = status["revenue"]
+            lines = [
+                f"🎯 *BUDGET vs AKTUAL — {datetime.utcnow():%B %Y}*\n",
+                f"💰 Revenue bulan ini: {fmt_rp(rev)}\n",
+            ]
+            cat_label = {
+                "operasional":"📋 Operasional","gaji":"👥 Gaji","pemasaran":"📢 Pemasaran",
+                "peralatan":"💻 Peralatan","utilitas":"💡 Utilitas","transport":"🚗 Transport",
+            }
+            for item in status["items"]:
+                cat = item["category"]
+                pct = item["target_pct"] * 100
+                tg = item["target_rp"]
+                real = item["realisasi_rp"]
+                p_used = item["pct_realized"]
+                bar = progress_bar(p_used)
+                lines.append(
+                    f"{cat_label.get(cat, cat)}\n"
+                    f" {item['emoji']} `{bar}` {float(p_used)*100:.0f}% terpakai\n"
+                    f" Realisasi: {fmt_rp(real)} / Target: {fmt_rp(tg)} ({float(pct):.0f}%)\n"
+                )
+            await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+            return
+
+        if args[0] == "set" and len(args) >= 3:
+            cat = args[1].lower()
+            if cat not in CATEGORY_LIST:
+                await update.message.reply_text(f"❌ Kategori `{cat}` tidak dikenal.")
+                return
+            try:
+                pct = Decimal(args[2])
+                if pct < 0 or pct > 5:  # max 500%
+                    raise ValueError
+            except (InvalidOperation, ValueError):
+                await update.message.reply_text("⚠️ Persentase tidak valid. Contoh: `0.30` = 30%")
+                return
+            set_budget(session, cat, pct)
+            await update.message.reply_text(
+                f"✅ Target `{cat}` diset ke *{float(pct)*100:.0f}%* dari revenue.",
+                parse_mode="Markdown",
+            )
+            return
+
+        await update.message.reply_text(
+            "⚠️ Format: `/budget` atau `/budget set <kategori> <persen>`\n"
+            "Contoh: `/budget set operasional 0.10` (10%)",
+            parse_mode="Markdown",
+        )
+    finally:
+        session.close()
+
+
+async def cmd_export(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    """Generate & kirim Excel report via Telegram."""
+    msg = await update.message.reply_text("⏳ Generating Excel report...")
+    session = get_session()
+    try:
+        from excel_export import export_to_excel
+        path = export_to_excel(session)
+        size_kb = os.path.getsize(path) / 1024
+        # Kirim file
+        with open(path, "rb") as f:
+            await update.message.reply_document(
+                document=f,
+                filename=os.path.basename(path),
+                caption=f"📊 *Finance Report*\n\n"
+                        f"📅 {datetime.utcnow():%d %B %Y %H:%M} UTC\n"
+                        f"💾 {size_kb:.1f} KB\n"
+                        f"📑 6 sheet: Dashboard, Jurnal, Buku Besar, L/R, Neraca, Kategori",
+                parse_mode="Markdown",
+            )
+        await msg.delete()
+    except Exception as e:
+        await msg.edit_text(f"❌ Gagal export: {e}")
     finally:
         session.close()
 
@@ -728,13 +913,16 @@ async def post_init(app):
         BotCommand("start", "Mulai"),
         BotCommand("help", "Panduan lengkap"),
         BotCommand("income", "Catat pendapatan (quick)"),
-        BotCommand("expense", "Catat pengeluaran (quick)"),
+        BotCommand("expense", "Catat pengeluaran (auto-kategori)"),
         BotCommand("journal", "Transaksi manual (debit/kredit)"),
         BotCommand("balance", "Saldo semua akun"),
         BotCommand("cash", "Arus kas"),
         BotCommand("report", "Laporan L/R"),
         BotCommand("list", "10 transaksi terakhir"),
         BotCommand("undo", "Hapus transaksi (JV-XXX)"),
+        BotCommand("budget", "Budget vs aktual"),
+        BotCommand("keyword", "Kelola keyword auto-kategori"),
+        BotCommand("export", "Export laporan ke Excel"),
     ])
 
 def main():
@@ -795,6 +983,9 @@ def main():
     app.add_handler(CommandHandler("list", cmd_list))
     app.add_handler(CommandHandler("undo", cmd_undo))
     app.add_handler(CommandHandler("categories", cmd_categories))
+    app.add_handler(CommandHandler("keyword", cmd_keyword))
+    app.add_handler(CommandHandler("budget", cmd_budget))
+    app.add_handler(CommandHandler("export", cmd_export))
 
     # Conversation handlers
     app.add_handler(inc_handler)

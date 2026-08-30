@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Finance Tracker{% endblock %}
+{% block content %}
+
+<h2>📊 Dashboard</h2>
+
+<div class="kpi-grid">
+  <div class="kpi {% if kpi.income > 0 %}positive{% endif %}">
+    <div class="label">💰 Total Pemasukan</div>
+    <div class="value">Rp {{ "{:,.0f}".format(kpi.income) }}</div>
+  </div>
+  <div class="kpi {% if kpi.expense > 0 %}negative{% endif %}">
+    <div class="label">💸 Total Pengeluaran</div>
+    <div class="value">Rp {{ "{:,.0f}".format(kpi.expense) }}</div>
+  </div>
+  <div class="kpi {% if kpi.net >= 0 %}positive{% else %}negative{% endif %}">
+    <div class="label">📊 Laba Bersih</div>
+    <div class="value">Rp {{ "{:,.0f}".format(kpi.net) }}</div>
+    <div class="sub">Margin: {{ "{:.1f}".format(kpi.margin * 100) }}%</div>
+  </div>
+  <div class="kpi {% if kpi.kas >= 0 %}positive{% else %}negative{% endif %}">
+    <div class="label">💵 Saldo Kas & Bank</div>
+    <div class="value">Rp {{ "{:,.0f}".format(kpi.kas) }}</div>
+  </div>
+  <div class="kpi">
+    <div class="label">🏦 Total Aset</div>
+    <div class="value">Rp {{ "{:,.0f}".format(kpi.aset) }}</div>
+  </div>
+  <div class="kpi">
+    <div class="label">💎 Total Ekuitas</div>
+    <div class="value">Rp {{ "{:,.0f}".format(kpi.ekuitas) }}</div>
+  </div>
+</div>
+
+{% if not kpi.balance %}
+<div class="card" style="border-left: 4px solid var(--danger); background: var(--loss);">
+  <strong>⚠️ Balance Sheet TIDAK SEIMBANG</strong> — Aset ≠ Liabilitas + Ekuitas. Perlu cek transaksi.
+</div>
+{% endif %}
+
+<div class="grid-2">
+  <div class="card">
+    <h3>📈 Tren 6 Bulan Terakhir</h3>
+    <canvas id="monthlyChart" height="200"></canvas>
+  </div>
+  <div class="card">
+    <h3>🥧 Distribusi Pengeluaran per Kategori</h3>
+    <canvas id="catChart" height="200"></canvas>
+  </div>
+</div>
+
+<div class="card">
+  <h3>🎯 Budget vs Aktual Bulan Ini</h3>
+  <p style="color: var(--text-light); font-size: 0.9rem; margin-bottom: 1rem;">
+    Revenue bulan ini: <strong>Rp {{ "{:,.0f}".format(revenue) }}</strong>
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>Kategori</th>
+        <th class="right">Target %</th>
+        <th class="right">Target (Rp)</th>
+        <th class="right">Realisasi (Rp)</th>
+        <th>Progress</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in budget_items %}
+      <tr>
+        <td>{{ item.emoji }} {{ item.category.title() }}</td>
+        <td class="right">{{ "{:.0f}".format(item.target_pct * 100) }}%</td>
+        <td class="right">Rp {{ "{:,.0f}".format(item.target_rp) }}</td>
+        <td class="right">Rp {{ "{:,.0f}".format(item.realisasi_rp) }}</td>
+        <td>
+          {% set pct = (item.pct_realized * 100)|int %}
+          {% if pct > 100 %}
+            <div class="bar-bg"><div class="bar-fill red" style="width: 100%;">{{ pct }}% (OVER)</div></div>
+          {% elif pct > 85 %}
+            <div class="bar-bg"><div class="bar-fill yellow" style="width: {{ pct }}%;">{{ pct }}%</div></div>
+          {% elif pct > 0 %}
+            <div class="bar-bg"><div class="bar-fill green" style="width: {{ pct }}%;">{{ pct }}%</div></div>
+          {% else %}
+            <div class="bar-bg"><div class="bar-fill gray" style="width: 5%;">0%</div></div>
+          {% endif %}
+        </td>
+        <td><span class="badge-status {{ item.status }}">{{ item.status|replace('_', ' ')|title }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>📜 5 Transaksi Terakhir</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>No. JV</th><th>Tanggal</th><th>Keterangan</th>
+        <th>Kategori</th><th class="right">Nominal</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in recent %}
+      <tr>
+        <td><code>{{ t.jv }}</code></td>
+        <td>{{ t.date }}</td>
+        <td>{{ t.description }}</td>
+        <td>{{ t.category }}</td>
+        <td class="right">Rp {{ "{:,.0f}".format(t.amount) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+// Monthly trend chart
+const monthlyData = {{ monthly|tojson }};
+new Chart(document.getElementById('monthlyChart'), {
+  type: 'bar',
+  data: {
+    labels: monthlyData.map(m => m.label),
+    datasets: [
+      { label: 'Pemasukan', data: monthlyData.map(m => m.income), backgroundColor: '#10b981' },
+      { label: 'Pengeluaran', data: monthlyData.map(m => m.expense), backgroundColor: '#ef4444' },
+      { label: 'Laba', data: monthlyData.map(m => m.net), backgroundColor: '#2563eb', type: 'line', borderColor: '#2563eb', borderWidth: 2, fill: false }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: { y: { beginAtZero: true, ticks: { callback: v => 'Rp ' + (v/1000000).toFixed(1) + 'jt' } } },
+    plugins: { legend: { position: 'bottom' } }
+  }
+});
+
+// Category pie
+const catData = {{ categories|tojson }};
+new Chart(document.getElementById('catChart'), {
+  type: 'doughnut',
+  data: {
+    labels: catData.map(c => c.name),
+    datasets: [{
+      data: catData.map(c => c.amount),
+      backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6']
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'bottom' },
+      tooltip: { callbacks: { label: ctx => `${ctx.label}: Rp ${(ctx.raw/1000000).toFixed(1)}jt` } }
+    }
+  }
+});
+
+// Auto-refresh KPI tiap 60 detik
+setInterval(async () => {
+  try {
+    const r = await fetch('/api/kpis');
+    const d = await r.json();
+    document.querySelectorAll('[data-kpi]').forEach(el => {
+      const k = el.dataset.kpi;
+      if (d[k] !== undefined) el.querySelector('.value').textContent =
+        'Rp ' + d[k].toLocaleString('id-ID');
+    });
+  } catch (e) {}
+}, 60000);
+</script>
+{% endblock %}

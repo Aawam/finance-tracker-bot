@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Buku Besar — Finance Tracker{% endblock %}
+{% block content %}
+<h2>📊 Buku Besar</h2>
+<div class="card">
+  <p style="color: var(--text-light); margin-bottom: 1rem;">
+    Saldo semua akun. Saldo positif hijau, negatif merah.
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>Kode</th><th>Nama Akun</th><th>Tipe</th><th>Normal</th>
+        <th class="right">Debit</th><th class="right">Kredit</th>
+        <th class="right">Saldo</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in accounts %}
+      <tr {% if a.saldo > 0 %}style="background: rgba(220,252,231,.3);"{% elif a.saldo < 0 %}style="background: rgba(254,226,226,.3);"{% endif %}>
+        <td><code>{{ a.code }}</code></td>
+        <td>{{ a.name }}</td>
+        <td><small>{{ a.type }}</small></td>
+        <td><small>{{ a.normal }}</small></td>
+        <td class="right">{{ "{:,.0f}".format(a.debit) }}</td>
+        <td class="right">{{ "{:,.0f}".format(a.credit) }}</td>
+        <td class="right"><strong>{{ "{:,.0f}".format(a.saldo) }}</strong></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

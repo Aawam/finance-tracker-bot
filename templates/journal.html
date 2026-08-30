@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Jurnal Umum — Finance Tracker{% endblock %}
+{% block content %}
+<h2>📒 Jurnal Umum</h2>
+<div class="card">
+  <p style="color: var(--text-light); margin-bottom: 1rem;">
+    Menampilkan <strong>{{ count }}</strong> transaksi terakhir. Setiap transaksi dijamin
+    seimbang (Debit = Kredit) oleh sistem Double-Entry.
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>No. JV</th><th>Tanggal</th><th>Keterangan</th>
+        <th>Kategori</th><th class="right">Nominal</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in txns %}
+      <tr>
+        <td><code>{{ t.jv }}</code></td>
+        <td>{{ t.date }}</td>
+        <td>{{ t.description }}</td>
+        <td>{{ t.category or '—' }}</td>
+        <td class="right">Rp {{ "{:,.0f}".format(t.amount) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -42,6 +42,18 @@ class JournalLine(Base):
     transaction = relationship("Transaction", back_populates="lines")
     account     = relationship("Account")
 
+class Budget(Base):
+    __tablename__ = "budgets"
+    category    = Column(String(30), primary_key=True)   # operasional/gaji/dll
+    target_pct  = Column(Numeric(5, 4), nullable=False)  # 0.30 = 30%
+    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class Keyword(Base):
+    __tablename__ = "keywords"
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    category    = Column(String(30), nullable=False, index=True)
+    keyword     = Column(String(50), nullable=False)
+
 # ----- Engine & session -----
 def make_engine(db_path: str = None):
     if db_path is None:

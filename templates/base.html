@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Finance Tracker{% endblock %}</title>
+<style>
+:root {
+  --primary: #1e3a8a; --primary-light: #2563eb; --accent: #3b82f6;
+  --bg: #f8fafc; --card: #ffffff; --border: #e2e8f0;
+  --text: #0f172a; --text-light: #64748b;
+  --success: #10b981; --warning: #f59e0b; --danger: #ef4444;
+  --profit: #dcfce7; --loss: #fee2e2;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.5; }
+nav { background: var(--primary); padding: 1rem 2rem; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+nav h1 { color: white; font-size: 1.25rem; display: inline-block; }
+nav ul { display: inline-block; margin-left: 2rem; list-style: none; }
+nav li { display: inline-block; margin-right: 1.5rem; }
+nav a { color: rgba(255,255,255,.85); text-decoration: none; font-size: 0.9rem; }
+nav a:hover, nav a.active { color: white; }
+nav .badge { background: rgba(255,255,255,.2); padding: 2px 8px; border-radius: 4px;
+  font-size: 0.75rem; margin-left: 0.5rem; }
+main { max-width: 1400px; margin: 2rem auto; padding: 0 1.5rem; }
+h2 { margin-bottom: 1rem; color: var(--primary); font-size: 1.5rem; }
+h3 { margin: 1.5rem 0 0.75rem; color: var(--primary); font-size: 1.1rem; }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem; margin-bottom: 2rem; }
+.kpi { background: var(--card); padding: 1.25rem; border-radius: 8px;
+  border: 1px solid var(--border); box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+.kpi .label { color: var(--text-light); font-size: 0.8rem; text-transform: uppercase;
+  letter-spacing: 0.5px; margin-bottom: 0.5rem; }
+.kpi .value { font-size: 1.5rem; font-weight: 700; color: var(--primary); }
+.kpi .sub { font-size: 0.85rem; color: var(--text-light); margin-top: 0.25rem; }
+.kpi.positive .value { color: var(--success); }
+.kpi.negative .value { color: var(--danger); }
+.card { background: var(--card); padding: 1.5rem; border-radius: 8px;
+  border: 1px solid var(--border); box-shadow: 0 1px 2px rgba(0,0,0,.04); margin-bottom: 1.5rem; }
+.card h3 { margin-top: 0; }
+table { width: 100%; border-collapse: collapse; }
+th { background: var(--bg); text-align: left; padding: 0.75rem; font-size: 0.85rem;
+  color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px;
+  border-bottom: 2px solid var(--border); }
+td { padding: 0.75rem; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+td.right { text-align: right; font-variant-numeric: tabular-nums; }
+tr:hover td { background: #f1f5f9; }
+tr.total td { font-weight: 700; background: #fef3c7; border-top: 2px solid var(--primary); }
+.bar-bg { background: #e2e8f0; height: 24px; border-radius: 4px; overflow: hidden; }
+.bar-fill { height: 100%; display: flex; align-items: center; padding-left: 8px;
+  color: white; font-size: 0.75rem; font-weight: 600; transition: width 0.3s; }
+.bar-fill.green { background: var(--success); }
+.bar-fill.yellow { background: var(--warning); }
+.bar-fill.red { background: var(--danger); }
+.bar-fill.gray { background: var(--text-light); }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+@media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
+.badge-status { display: inline-block; padding: 2px 8px; border-radius: 12px;
+  font-size: 0.75rem; font-weight: 600; }
+.badge-status.over { background: var(--loss); color: var(--danger); }
+.badge-status.on_track { background: #fef3c7; color: #92400e; }
+.badge-status.under { background: var(--profit); color: #065f46; }
+.badge-status.no_target { background: #f1f5f9; color: var(--text-light); }
+footer { text-align: center; padding: 2rem; color: var(--text-light); font-size: 0.85rem; }
+</style>
+{% block head %}{% endblock %}
+</head>
+<body>
+<nav>
+  <h1>💼 Finance Tracker</h1>
+  <ul>
+    <li><a href="/" class="{% if request.path == '/' %}active{% endif %}">Dashboard</a></li>
+    <li><a href="/journal" class="{% if request.path == '/journal' %}active{% endif %}">Jurnal</a></li>
+    <li><a href="/ledger" class="{% if request.path == '/ledger' %}active{% endif %}">Buku Besar</a></li>
+    <li><a href="/report" class="{% if request.path == '/report' %}active{% endif %}">L/R</a></li>
+    <li><a href="/balance" class="{% if request.path == '/balance' %}active{% endif %}">Neraca</a></li>
+  </ul>
+  <span class="badge">Bot: @{{ bot_name|default('finance_tracker') }}</span>
+</nav>
+<main>
+{% block content %}{% endblock %}
+</main>
+<footer>
+  Finance Tracker • Generated {{ generated_at|default('') }}
+</footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>

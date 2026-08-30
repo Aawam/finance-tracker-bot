@@ -105,11 +105,12 @@ def report_income_statement(session, period_start=None, period_end=None):
     Laporan Laba Rugi untuk periode (default: semua waktu).
     Returns dict {income: Decimal, expense: Decimal, net: Decimal, items: [(name, amount)]}
     """
-    q = session.query(JournalLine).join(Account)
+    from db import Transaction
+    q = session.query(JournalLine).join(Account).join(Transaction)
     if period_start:
-        q = q.join(Transaction).filter(Transaction.txn_date >= period_start)
+        q = q.filter(Transaction.txn_date >= period_start)
     if period_end:
-        q = q.join(Transaction).filter(Transaction.txn_date <= period_end)
+        q = q.filter(Transaction.txn_date <= period_end)
     lines = q.all()
 
     income_items  = defaultdict(lambda: D(0))   # name -> total

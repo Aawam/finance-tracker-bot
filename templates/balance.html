@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Neraca — Finance Tracker{% endblock %}
+{% block content %}
+<h2>⚖️ Neraca (Balance Sheet)</h2>
+
+{% if balance %}
+<div class="card" style="border-left: 4px solid var(--success); background: rgba(220,252,231,.5);">
+  <strong>✓ BALANCE SHEET SEIMBANG</strong> — Aset = Liabilitas + Ekuitas
+</div>
+{% else %}
+<div class="card" style="border-left: 4px solid var(--danger); background: var(--loss);">
+  <strong>⚠️ TIDAK SEIMBANG</strong> — Ada transaksi yang perlu dikoreksi.
+</div>
+{% endif %}
+
+<div class="kpi-grid">
+  <div class="kpi">
+    <div class="label">💎 Total Aset</div>
+    <div class="value">Rp {{ "{:,.0f}".format(aset) }}</div>
+  </div>
+  <div class="kpi">
+    <div class="label">📌 Liabilitas</div>
+    <div class="value">Rp {{ "{:,.0f}".format(liabilitas) }}</div>
+  </div>
+  <div class="kpi">
+    <div class="label">💼 Ekuitas (pre-LR)</div>
+    <div class="value">Rp {{ "{:,.0f}".format(ekuitas) }}</div>
+  </div>
+  <div class="kpi {% if laba >= 0 %}positive{% else %}negative{% endif %}">
+    <div class="label">📊 Laba Tahun Ini</div>
+    <div class="value">Rp {{ "{:,.0f}".format(laba|abs) }}</div>
+  </div>
+  <div class="kpi">
+    <div class="label">💎 Total Ekuitas</div>
+    <div class="value">Rp {{ "{:,.0f}".format(total_ekuitas) }}</div>
+  </div>
+</div>
+{% endblock %}

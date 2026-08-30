@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Laporan L/R — Finance Tracker{% endblock %}
+{% block content %}
+<h2>📈 Laporan Laba Rugi</h2>
+
+<div class="kpi-grid">
+  <div class="kpi positive">
+    <div class="label">Total Pendapatan</div>
+    <div class="value">Rp {{ "{:,.0f}".format(total_income) }}</div>
+  </div>
+  <div class="kpi negative">
+    <div class="label">Total Beban</div>
+    <div class="value">Rp {{ "{:,.0f}".format(total_expense) }}</div>
+  </div>
+  <div class="kpi {% if net >= 0 %}positive{% else %}negative{% endif %}">
+    <div class="label">{% if net >= 0 %}LABA BERSIH{% else %}RUGI BERSIH{% endif %}</div>
+    <div class="value">Rp {{ "{:,.0f}".format(net|abs) }}</div>
+    <div class="sub">Margin: {{ "{:.1f}".format(margin * 100) }}%</div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h3>💰 Pendapatan</h3>
+    <table>
+      <tbody>
+        {% for name, amt in income_items %}
+        <tr>
+          <td>{{ name }}</td>
+          <td class="right">Rp {{ "{:,.0f}".format(amt) }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="total">
+          <td>TOTAL PENDAPATAN</td>
+          <td class="right">Rp {{ "{:,.0f}".format(total_income) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>💸 Beban</h3>
+    <table>
+      <tbody>
+        {% for name, amt in expense_items %}
+        <tr>
+          <td>{{ name }}</td>
+          <td class="right">Rp {{ "{:,.0f}".format(amt) }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="total">
+          <td>TOTAL BEBAN</td>
+          <td class="right">Rp {{ "{:,.0f}".format(total_expense) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
