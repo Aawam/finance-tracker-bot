@@ -1,0 +1,19 @@
+# Sensitive — jangan di-commit
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Database lokal (jangan push data)
+data/*.db
+data/*.sqlite*
+
+# Generated Excel exports
+exports/*.xlsx
+
+# OS
+.DS_Store
+Thumbs.db
